@@ -1,0 +1,125 @@
+//Professor Thiago// 
+//Boneca articulada com trena digital//
+#include <Servo.h> // Inclui a biblioteca Servo para controlar os servos
+#include <U8g2lib.h> // Inclui a biblioteca U8g2 para o display OLED
+
+const int pinoBuzzer = 2; // Define a constante pinoBuzzer como 2 (pino digital para o buzzer)
+int cm = 0; // Variável para armazenar a distância medida pelo sensor ultrassônico
+bool relayOn = false; // Variável para controlar o estado do relé (inicialmente desligado)
+unsigned long lastDetectionTime = 0; // Variável para armazenar o tempo da última detecção
+const int detectionInterval = 3000; // Define o intervalo de detecção como 3 segundos
+
+// Função para medir a distância com o sensor ultrassônico
+long readUltrasonicDistance(int triggerPin, int echoPin) {
+  pinMode(triggerPin, OUTPUT);
+  digitalWrite(triggerPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(triggerPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(triggerPin, LOW);
+  pinMode(echoPin, INPUT);
+  return pulseIn(echoPin, HIGH);
+}
+
+// Declaração de objetos do tipo Servo para controlar os servos
+Servo servo1;
+Servo servo2;
+Servo servo3;
+
+// Criação de um objeto U8g2 para controlar o display OLED
+U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+
+const int relayPin = 12; // Define o pino do relé como 12
+
+void setup() {
+  Serial.begin(9600); // Inicializa a comunicação serial
+
+  servo1.attach(9); // Conecta o servo1 ao pino 9
+  servo2.attach(10); // Conecta o servo2 ao pino 10
+  servo3.attach(11); // Conecta o servo3 ao pino 11
+
+  pinMode(relayPin, OUTPUT); // Configura o pino do relé como saída
+  digitalWrite(relayPin, LOW); // Desliga o relé (inicialmente desligado)
+
+  u8g2.begin(); // Inicializa o display OLED
+  u8g2.enableUTF8Print(); // Ativa a impressão de texto UTF-8
+  u8g2.setFont(u8g2_font_ncenB14_tr); // Define a fonte do display
+}
+
+// Função para atualizar o display OLED com "BATATINHA" e a distância medida em centímetros
+void updateDisplay(const char *line1, int distanceCm) {
+  u8g2.firstPage();
+  do {
+    u8g2.clearBuffer();
+    u8g2.setCursor(0, 30);
+    u8g2.print(line1);
+    u8g2.setCursor(0, 60);
+    u8g2.print("Distancia: ");
+    u8g2.print(distanceCm); // Exibe a distância em centímetros
+    u8g2.print(" cm");
+  } while (u8g2.nextPage());
+}
+
+// Função para mover os servos suavemente
+void moveServosSmoothly(Servo servo, int targetAngle) {
+  int currentAngle = servo.read(); // Lê a posição atual do servo
+  int step = 1; // Define o incremento de passos
+  int delayInterval = 15; // Define o intervalo de atraso entre os passos (quanto maior, mais lento o movimento)
+
+  if (currentAngle < targetAngle) {
+    for (int angle = currentAngle; angle <= targetAngle; angle += step) {
+      servo.write(angle); // Define a nova posição do servo
+      delay(delayInterval); // Aguarda um curto período
+    }
+  } else if (currentAngle > targetAngle) {
+    for (int angle = currentAngle; angle >= targetAngle; angle -= step) {
+      servo.write(angle); // Define a nova posição do servo
+      delay(delayInterval); // Aguarda um curto período
+    }
+  }
+}
+
+void loop() {
+  cm = 0.01723 * readUltrasonicDistance(5, 7); // Mede a distância com o sensor ultrassônico
+
+  Serial.print(cm); // Exibe a distância no monitor serial
+  Serial.println(" cm");
+
+  // Atualiza o display com "BATATINHA" e a distância medida em centímetros
+  updateDisplay("BATATINHA", cm);
+
+  if (cm <= 30) { // Verifica se a distância é menor ou igual a 30 cm
+    if (!relayOn) { // Verifica se o relé está desligado
+      digitalWrite(relayPin, HIGH); // Liga o relé
+      relayOn = true; // Atualiza o estado do relé como ligado
+    }
+    
+    if (millis() - lastDetectionTime >= detectionInterval) { // Verifica se passou o intervalo de detecção
+      lastDetectionTime = millis(); // Atualiza o tempo da última detecção
+
+      tone(pinoBuzzer, 1500); // Aciona o buzzer
+
+      // Move os três servos para uma posição específica (por exemplo, 90 graus) suavemente
+      moveServosSmoothly(servo1, 90);
+      moveServosSmoothly(servo2, 90);
+      moveServosSmoothly(servo3, 90);
+
+      // Desliga o relé após 3 segundos quando algo é detectado
+      delay(3000);
+      digitalWrite(relayPin, LOW); // Desliga o relé
+    }
+  } else {
+    noTone(pinoBuzzer); // Desliga o buzzer
+    
+    if (relayOn) { // Verifica se o relé está ligado
+      digitalWrite(relayPin, LOW); // Desliga o relé
+      relayOn = false; // Atualiza o estado do relé como desligado
+    }
+
+    // Move os três servos de volta para a posição inicial (por exemplo, 0 graus) suavemente
+    moveServosSmoothly(servo1, 0);
+    moveServosSmoothly(servo2, 0);
+    moveServosSmoothly(servo3, 0);
+  }
+  delay(100); // Pequeno atraso para evitar leituras rápidas do sensor
+}
